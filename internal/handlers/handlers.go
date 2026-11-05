@@ -4,6 +4,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/Yandex-Practicum/go1fl-sprint6-final/internal/service"
 )
@@ -30,12 +32,13 @@ func Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, _, err := r.FormFile("myFile")
+	file, header, err := r.FormFile("myFile")
 	if err != nil {
 		http.Error(w, "Ошибка при получении файла", http.StatusInternalServerError)
 		return
 	}
 	defer file.Close()
+	ext := filepath.Ext(header.Filename)
 
 	content, err := io.ReadAll(file)
 	if err != nil {
@@ -46,6 +49,19 @@ func Upload(w http.ResponseWriter, r *http.Request) {
 	result, err := service.Convert(string(content))
 	if err != nil {
 		http.Error(w, "Ошибка при конвертации", http.StatusInternalServerError)
+		return
+	}
+	filename := time.Now().UTC().String() + ext
+	output, err := os.Create(filename)
+	if err != nil {
+		http.Error(w, "Ошибка при создании файла", http.StatusInternalServerError)
+		return
+	}
+	defer output.Close()
+
+	_, err = output.Write([]byte(result))
+	if err != nil {
+		http.Error(w, "Ошибка при записи в файл", http.StatusInternalServerError)
 		return
 	}
 	w.Write([]byte(result))
