@@ -1,13 +1,24 @@
 package handlers
 
 import (
+	"errors"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/Yandex-Practicum/go1fl-sprint6-final/internal/service"
+)
+
+// MaxUploadSize задаёт максимальный размер загружаемого файла в байтах.
+const MaxUploadSize = 10 << 20
+
+const (
+	multipartMemory = 1 << 20
+	// Дополнительное место для заголовков multipart и остальных полей формы.
+	maxRequestSize = MaxUploadSize + multipartMemory
 )
 
 func Index(w http.ResponseWriter, r *http.Request) {
@@ -27,11 +38,22 @@ func Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := r.ParseMultipartForm(10 << 20)
+	if r.ContentLength > maxRequestSize {
+		http.Error(w, "Слишком большой запрос", http.StatusInternalServerError)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestSize)
+	err := r.ParseMultipartForm(multipartMemory)
 	if err != nil {
+		var sizeErr *http.MaxBytesError
+		if errors.As(err, &sizeErr) || errors.Is(err, multipart.ErrMessageTooLarge) {
+			http.Error(w, "Слишком большой запрос", http.StatusInternalServerError)
+			return
+		}
 		http.Error(w, "Ошибка при разборе формы", http.StatusInternalServerError)
 		return
 	}
+	defer r.MultipartForm.RemoveAll()
 
 	file, header, err := r.FormFile("myFile")
 	if err != nil {
@@ -39,6 +61,10 @@ func Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
+	if header.Size > MaxUploadSize {
+		http.Error(w, "Файл превышает лимит 10 МиБ", http.StatusInternalServerError)
+		return
+	}
 	ext := filepath.Ext(header.Filename)
 
 	content, err := io.ReadAll(file)

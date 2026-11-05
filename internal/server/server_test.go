@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Yandex-Practicum/go1fl-sprint6-final/internal/handlers"
 	"github.com/Yandex-Practicum/go1fl-sprint6-final/internal/server"
 )
 
@@ -313,4 +314,61 @@ func TestHTTPUploadAndRouting(t *testing.T) {
 			t.Fatalf("page at %s submits to %s", base, target)
 		}
 	})
+}
+
+func TestHTTPUploadSizeBoundaries(t *testing.T) {
+	if testing.Short() {
+		t.Skip("10 MiB upload boundary check")
+	}
+	for _, tt := range []struct {
+		name string
+		size int
+		want int
+	}{
+		{"below_limit", handlers.MaxUploadSize - 1, http.StatusOK},
+		{"at_limit", handlers.MaxUploadSize, http.StatusOK},
+		{"above_limit", handlers.MaxUploadSize + 1, http.StatusInternalServerError},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			srv, dir := startServer(t)
+			input := bytes.Repeat([]byte(". "), (tt.size+1)/2)[:tt.size]
+			body, contentType := multipartBody(t, "myFile", "large.txt", input)
+			status, _, result := send(t, srv.Client(), "POST", srv.URL+"/upload", contentType, body)
+			if status != tt.want {
+				t.Fatalf("file=%d bytes: status=%d; want %d", tt.size, status, tt.want)
+			}
+			files := outputFiles(t, dir)
+			if tt.want != http.StatusOK {
+				if len(files) != 0 {
+					t.Fatalf("rejected upload created files: %q", files)
+				}
+				return
+			}
+			want := strings.Repeat("Е", (tt.size+1)/2)
+			if result != want || len(files) != 1 {
+				t.Fatalf("large upload returned %d bytes and saved %d files; want %d bytes and 1 file", len(result), len(files), len(want))
+			}
+			saved, err := os.ReadFile(filepath.Join(dir, files[0]))
+			if err != nil || string(saved) != want {
+				t.Fatalf("large upload saved an incomplete result: size=%d err=%v", len(saved), err)
+			}
+		})
+	}
+	// Проверка размера запроса с Content-Length и без него.
+	for _, chunked := range []bool{false, true} {
+		t.Run(fmt.Sprintf("request_cap_chunked_%t", chunked), func(t *testing.T) {
+			srv, dir := startServer(t)
+			input := bytes.Repeat([]byte("А"), (12<<20)/2)
+			body, contentType := multipartBody(t, "myFile", "large.txt", input)
+			var reader io.Reader = body
+			if chunked {
+				// Не передаём длину буфера, чтобы включить chunked-кодирование.
+				reader = struct{ io.Reader }{body}
+			}
+			status, _, _ := send(t, srv.Client(), "POST", srv.URL+"/upload", contentType, reader)
+			if status != http.StatusInternalServerError || len(outputFiles(t, dir)) != 0 {
+				t.Fatalf("oversized request: status=%d, saved files=%d; want 500, 0", status, len(outputFiles(t, dir)))
+			}
+		})
+	}
 }
