@@ -4,6 +4,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+
+	"github.com/Yandex-Practicum/go1fl-sprint6-final/internal/service"
 )
 
 func Index(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +43,10 @@ func Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	w.Write(content)
+	result, err := service.Convert(string(content))
+	if err != nil {
+		http.Error(w, "Ошибка при конвертации", http.StatusInternalServerError)
+		return
+	}
+	w.Write([]byte(result))
 }
