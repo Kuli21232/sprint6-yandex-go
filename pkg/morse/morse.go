@@ -163,7 +163,7 @@ func reverseEncodingMap(encoding EncodingMap) map[string]rune {
 func (c Converter) ToText(morse string) string {
 	out := make([]rune, 0, int(float64(len(morse))/averageSize))
 
-	words := strings.Split(morse, c.charSeparator+Space+c.charSeparator)
+	words := strings.Split(morse, c.wordSeparator)
 	for _, word := range words {
 		chars := strings.Split(word, c.charSeparator)
 
@@ -185,9 +185,9 @@ func (c Converter) ToText(morse string) string {
 		out = append(out, ' ')
 	}
 
-	// Remove last charSeparator
-	if !c.trailingSeparator && len(out) >= len(c.charSeparator) {
-		out = out[:len(out)-len(c.charSeparator)]
+	// Each decoded word ends with one space, regardless of the code separators.
+	if !c.trailingSeparator && len(out) > 0 {
+		out = out[:len(out)-1]
 	}
 
 	return string(out)
@@ -262,34 +262,37 @@ func NewConverter(convertingMap EncodingMap, options ...ConverterOption) Convert
 //
 // For Example: "Test" -> "- . ... -".
 func (c Converter) ToMorse(text string) string {
-	out := make([]rune, 0, int(float64(len(text))*averageSize))
+	var out strings.Builder
+	separator := ""
 
 	for _, ch := range text {
+		if ch == ' ' {
+			out.WriteString(c.wordSeparator)
+			separator = ""
+			continue
+		}
 		if c.convertToUpper {
 			ch = unicode.ToUpper(ch)
 		}
 
-		if _, ok := c.runeToMorse[ch]; !ok {
-			hand := []rune(c.Handling(ErrNoEncoding{string(ch)}))
-			out = append(out, hand...)
-
-			// Add a charSeparator is the len of the result is not zero
-			if len(hand) != 0 {
-				out = append(out, []rune(c.charSeparator)...)
+		code, ok := c.runeToMorse[ch]
+		if !ok {
+			code = c.Handling(ErrNoEncoding{string(ch)})
+			if code == "" {
+				continue
 			}
-			continue
 		}
 
-		out = append(out, []rune(c.runeToMorse[ch])...)
-		out = append(out, []rune(c.charSeparator)...)
+		out.WriteString(separator)
+		out.WriteString(code)
+		separator = c.charSeparator
 	}
 
-	// Remove last charSeparator
-	if !c.trailingSeparator && len(out) >= len(c.charSeparator) {
-		out = out[:len(out)-len(c.charSeparator)]
+	if c.trailingSeparator && out.Len() > 0 {
+		out.WriteString(separator)
 	}
 
-	return string(out)
+	return out.String()
 }
 
 var DefaultConverter = NewConverter(
