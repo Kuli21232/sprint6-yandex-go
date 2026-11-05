@@ -16,12 +16,13 @@ func Index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось прочитать HTML-файл", http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(content)
 }
 
 func Upload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
 		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
 		return
 	}
@@ -64,5 +65,6 @@ func Upload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Ошибка при записи в файл", http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Write([]byte(result))
 }
